@@ -22,11 +22,28 @@ def read_data(path="articles1000.csv"):
     
     return result
 
+def doc_sum_1(doc, query):
+    pass
+
+def doc_sum_2(doc, query):
+    pass
+
+def doc_sum_3(doc, query):
+    pass
+
+def compare_doc_sum(query, summary_len=50):
+    sum_methods = [doc_sum_1, doc_sum_2, doc_sum_3]
+    for method in sum_methods:
+        method([], query)
+    pass
+
 def launch():
     print("Doc sum launcher")
     data_path = 'data.nosync/articles1000.csv'
     articles = read_data(data_path)
     print(articles[0])
+    q = "query here"
+    compare_doc_sum(q, 50)
 
 if __name__ == '__main__':
     launch()
