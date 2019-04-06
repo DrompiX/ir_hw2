@@ -19,7 +19,7 @@ def preprocess(text):
     return [w for w in tokenized if w.isalpha()]
 
 
-def build_index(docs: list, paths: dict):
+def build_index(docs: list, paths: dict, dir: str):
     global index, doc_lengths, documents
 
     for doc_id, doc in enumerate(docs):
@@ -45,6 +45,9 @@ def build_index(docs: list, paths: dict):
                 index[term] = [1]
             index[term].append((doc_id, tf[term]))
 
+    if not os.path.exists(dir):
+        os.makedirs(dir)
+    
     with open(paths['index'], 'wb') as dump_file:
         pickle.dump(index, dump_file)
     

@@ -42,16 +42,17 @@ def compare_doc_sum(query, doc, summary_len=50):
 def launch():
     print("Doc sum launcher")
     data_path = 'data.nosync/articles1000.csv'
+    save_dir = 'engine_data/'
     save_paths = {
-        'index': 'index.p',
-        'lengths': 'doc_lengths.p',
-        'docs': 'documents.p'
+        'index': f'{save_dir}index.p',
+        'lengths': f'{save_dir}doc_lengths.p',
+        'docs': f'{save_dir}documents.p'
     }
     
     if not engine.index_exists(paths=save_paths):
         print("* Building index... *")
         articles = read_data(data_path)
-        engine.build_index(docs=articles, paths=save_paths)
+        engine.build_index(docs=articles, paths=save_paths, dir=save_dir)
         print("* Index was built successfully! *")
     else:
         print("* Loading index... *")
