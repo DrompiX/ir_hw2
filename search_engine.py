@@ -45,7 +45,7 @@ def build_index(docs: list, paths: dict, dir: str):
                 index[term] = [1]
             index[term].append((doc_id, tf[term]))
 
-    if not os.path.exists(dir):
+    if dir != '' and not os.path.exists(dir):
         os.makedirs(dir)
     
     with open(paths['index'], 'wb') as dump_file:
