@@ -1,6 +1,9 @@
 import csv
 from collections import namedtuple
 import search_engine as engine
+import sys
+
+csv.field_size_limit(sys.maxsize)
 
 Article = namedtuple('Article', ['title', 'body'])
 
@@ -36,12 +39,12 @@ def compare_doc_sum(query, doc, summary_len=50):
     sum_methods = [doc_sum_1, doc_sum_2, doc_sum_3]
     for method in sum_methods:
         print(f"Document summary for {method.__name__}")
-        # method([], query)
+        # print(method(doc, query))
     pass
 
 def launch():
     print("Doc sum launcher")
-    data_path = 'data.nosync/articles1000.csv'
+    data_path = 'data.nosync/articles50000.csv'
     save_dir = 'engine_data/'
     save_paths = {
         'index': f'{save_dir}index.p',
@@ -59,8 +62,11 @@ def launch():
         engine.load_index(paths=save_paths)
         print("* Index was loaded successfully! *")
     
-    q = "Tesla model X"
+    q = "Macbook"
     docs = engine.answer_query(q, 2)
+    # print(docs[0])
+    # print('--------\n')
+    # print(docs[1])
     compare_doc_sum(q, docs[0], 50)
 
 if __name__ == '__main__':

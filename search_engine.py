@@ -4,6 +4,7 @@ from collections import Counter
 import math
 import heapq
 import os
+import sys
 
 index = {}
 doc_lengths = {}
@@ -21,8 +22,19 @@ def preprocess(text):
 
 def build_index(docs: list, paths: dict, dir: str):
     global index, doc_lengths, documents
+    index = {}
+    doc_lengths = {}
+    documents = {}
 
+    print("Start building index...")
+    processed = 0
+    total = len(docs)
+    tik = total / 100
     for doc_id, doc in enumerate(docs):
+        if processed % tik == 0:
+            perc = int(processed / total * 100)
+            sys.stdout.write(f"\rDocuments processed - {perc}%")
+            sys.stdout.flush()
         full_doc = ''
         if (doc.title == '') or (doc.body == ''):
             full_doc = doc.title + doc.body
@@ -44,6 +56,8 @@ def build_index(docs: list, paths: dict, dir: str):
             else:
                 index[term] = [1]
             index[term].append((doc_id, tf[term]))
+        
+        processed += 1
 
     if dir != '' and not os.path.exists(dir):
         os.makedirs(dir)
