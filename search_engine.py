@@ -1,6 +1,7 @@
 import nltk
 import pickle
 from collections import Counter
+from typing import List, NamedTuple, Dict
 import math
 import heapq
 import os
@@ -9,6 +10,11 @@ import sys
 index = {}
 doc_lengths = {}
 documents = {}
+
+
+class Article(NamedTuple):
+    title: str
+    body: str
 
 
 def tokenize(text):
@@ -20,7 +26,7 @@ def preprocess(text):
     return [w for w in tokenized if w.isalpha()]
 
 
-def build_index(docs: list, paths: dict, dir: str):
+def build_index(docs: List[Article], paths: dict, dir: str):
     global index, doc_lengths, documents
     index = {}
     doc_lengths = {}
@@ -35,15 +41,10 @@ def build_index(docs: list, paths: dict, dir: str):
             perc = int(processed / total * 100)
             sys.stdout.write(f"\rDocuments processed - {perc}%")
             sys.stdout.flush()
-        full_doc = ''
-        if (doc.title == '') or (doc.body == ''):
-            full_doc = doc.title + doc.body
-        else:
-            full_doc = doc.title + '\n' + doc.body
-        
-        documents[doc_id] = full_doc
+                
+        documents[doc_id] = doc
 
-        doc_terms = preprocess(full_doc)
+        doc_terms = preprocess(doc.title + doc.body)
         doc_lengths[doc_id] = len(doc_terms)
 
         tf = Counter()
@@ -72,15 +73,18 @@ def build_index(docs: list, paths: dict, dir: str):
         pickle.dump(documents, dump_file)
 
 
-def okapi_scoring(query, doc_lengths, index, k1=1.2, b=0.75):
-    """
+def okapi_scoring(query: str, doc_lengths: Dict[int, int], index, k1=1.2, b=0.75):
+    '''
     Computes scores for all documents containing any of query terms
     according to the Okapi BM25 ranking function, refer to wikipedia,
     but calculate IDF as described in chapter 6, using 10 as a base of log
 
-    :param query: dictionary - term:frequency
-    :return: dictionary of scores - doc_id:score
-    """
+    Args
+        query (dict): dictionary of (term: frequency)
+    
+    Returns
+        dict: dictionary of scores - doc_id:score
+    '''
     scores = Counter()
     avgdl = sum(doc_lengths.values()) / len(doc_lengths)
     for term in query:
@@ -95,7 +99,7 @@ def okapi_scoring(query, doc_lengths, index, k1=1.2, b=0.75):
     return dict(scores)
 
 
-def answer_query(raw_query, top_k):
+def answer_query(raw_query: str, top_k: int) -> List[Article]:
     query = preprocess(raw_query)
     query = Counter(query)
     scores = okapi_scoring(query, doc_lengths, index)
@@ -114,11 +118,11 @@ def answer_query(raw_query, top_k):
     return top_k_result
 
 
-def index_exists(paths: dict):
+def index_exists(paths: Dict[str, str]):
     return os.path.isfile(paths['index'])
 
 
-def load_index(paths: dict):
+def load_index(paths: Dict[str, str]):
     global index, doc_lengths, documents
 
     with open(paths['index'], 'rb') as fp:
