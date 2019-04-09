@@ -28,17 +28,19 @@ def read_data(path="articles1000.csv"):
     
     return result
 
+# TODO: think about multiplying tf in text by tf in query ???
 def doc_sum_1(doc, query, summary_len):
-    '''Implementaion of naive query-independent summarization
+    '''Implementaion of naive text summarization
     
     Idea is to take document data, preprocess it, divide into
     sentences, calculate score for each sentence based of tf
-    of each word in it, and return top k sentences, for which
+    of each word in it and multiply for tf of each word in 
+    the query, and return top k sentences, for which
     sum of lengths is less or equal to `summary_len`
 
     Args:
         doc (str): text of the document
-        query (str): input query (actually is not used)
+        query (str): input query
         summary_len (int): max amount of terms for output
     
     Returns:
@@ -47,12 +49,20 @@ def doc_sum_1(doc, query, summary_len):
     title_end = doc.find('\n')
     title = doc[:title_end]
     doc_clear = re.sub(r'\[[0-9]*\]', ' ', doc[title_end:])
+    doc_clear = re.sub(r'[’”]', '', doc_clear)
     doc_clear = re.sub(r'\s+', ' ', doc_clear)
     sentences = nltk.sent_tokenize(doc_clear)
-    # calculating number of temm occurences
+    
+    # calculating number of temm occurences in query
+    q_tf = Counter()
+    for term in engine.tokenize(query):
+        q_tf[term] += 1
+
+    # calculating number of temm occurences in text
     tf = Counter()
     for term in engine.tokenize(doc_clear):
         tf[term] += 1
+
     # normalizing tf on maximum tf
     max_freq = max(tf.values())
     for term in tf:
@@ -65,9 +75,9 @@ def doc_sum_1(doc, query, summary_len):
             # consider only short sentences
             if len(sentence.split(' ')) < 25:
                 if sentence in score_results:
-                    score_results[sentence] += tf[term]
+                    score_results[sentence] += tf[term] * q_tf[term]
                 else:
-                    score_results[sentence] = tf[term]
+                    score_results[sentence] = tf[term] * q_tf[term]
     
     result = [title, '\n']
     cur_length = 0
@@ -78,7 +88,6 @@ def doc_sum_1(doc, query, summary_len):
             result.append(sentence)
             cur_length += sent_len
         else:
-            print(cur_length, sent_len, summary_len)
             break
     
     return ''.join(result)
