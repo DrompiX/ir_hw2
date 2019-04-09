@@ -2,15 +2,20 @@ import csv
 from collections import Counter
 from typing import List, NamedTuple
 from search_engine import Article
+from sklearn.cluster import KMeans
 import search_engine as engine
 import sys
 import nltk
 import re
+import numpy as np
+import networkx as nx
+from node2vec import Node2Vec
+# from node2vec import Node2Vec
 
 csv.field_size_limit(sys.maxsize)
 
 
-def read_data(path="articles1000.csv"):
+def read_data(path: str = "articles50000.csv") -> List[Article]:
     '''Read data from original articles csv file
     
     Args:
@@ -18,7 +23,7 @@ def read_data(path="articles1000.csv"):
             containing title and third column - text
 
     Returns:
-        list[Article] - list of Article namedtuples
+        List of read Articles
     '''
     result = []
     with open(path) as csvfile:
@@ -30,7 +35,7 @@ def read_data(path="articles1000.csv"):
     return result
 
 
-def doc_sum_1(doc: Article, query: str, summary_len: int) -> str:
+def naive_sum(doc: Article, query: str, summary_len: int) -> str:
     '''Implementaion of naive text summarization
     
     Idea is to take document data, preprocess it, divide into
@@ -40,14 +45,14 @@ def doc_sum_1(doc: Article, query: str, summary_len: int) -> str:
     sum of lengths is less or equal to `summary_len`
 
     Args:
-        doc (str): text of the document
-        query (str): input query
-        summary_len (int): max amount of terms for output
+        doc: text of the document
+        query: input query
+        summary_len: max amount of terms for output
     
     Returns:
-        str: resulting summary (title + summary text)
+        resulting summary (title + summary text)
     '''
-    # doc_clear = doc.body#re.sub(r'\[[0-9]*\]', ' ', doc.body)
+    # doc_clear = re.sub(r'\[[0-9]*\]', ' ', doc.body)
     doc_clear = re.sub(r'[’”]', ' ', doc.body)
     doc_clear = re.sub(r'\s+', ' ', doc_clear)
     sentences = nltk.sent_tokenize(doc_clear)
@@ -86,14 +91,113 @@ def doc_sum_1(doc: Article, query: str, summary_len: int) -> str:
     return ''.join(result)
 
 
-def doc_sum_2(doc: Article, query: str, summary_len: int) -> str:
-    pass
+class Graph(NamedTuple):
+    V: np.ndarray
+    E: np.ndarray
+
+
+def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
+    '''TODO: add docstring'''
+    n = len(sentences)
+    tf = Counter(engine.preprocess(text))
+
+    idf = Counter()
+    for s in sentences:
+        for term in set(engine.preprocess(s)):
+            idf[term] += 1
+
+    for term in idf:
+        idf[term] = np.log10(n / (1 + idf[term]))
+    
+    V = np.zeros(shape=(n, len(tf)), dtype='float64')
+    for i in range(len(sentences)):
+        s_terms = engine.preprocess(sentences[i])
+        for j in range(len(tf)):
+            term = list(tf.keys())[j]
+            V[i, j] = tf[term] * idf[term] if term in s_terms else 0.0
+
+    G = nx.Graph()
+    E = np.ndarray(shape=(n, n), dtype='float64')
+    for i in range(n):
+        for j in range(n):
+            tf_idf_cos = np.sum(np.multiply(V[i], V[j]))
+            tf_idf_cos /= np.sqrt(np.sum(V[i]**2)) * np.sqrt(np.sum(V[j]**2))
+            if tf_idf_cos > eps:
+                G.add_edge(i, j, weight=tf_idf_cos)
+                G.add_edge(j, i, weight=tf_idf_cos)
+                # E[i, j] = tf_idf_cos
+                # E[j, i] = tf_idf_cos
+
+    return G#Graph(V, E)
+
+
+# def get_modularity(adj: np.ndarray, graph: nx.Graph, clusters: np.ndarray) -> float:
+#     q = 0.0
+#     for i in range(len(clusters)):
+#         for j in range(len(clusters)):
+#             if clusters[i] == clusters[j]:
+#                 k_i, k_j = graph.degree[i], graph.degree[j]
+#                 print(q, k_i, k_j)
+#                 q += adj[i, j] - k_i * k_j / (2 * len(adj))
+    
+#     return q / (2 * len(adj))
+
+def graph_sum(doc: Article, query: str, summary_len: int) -> str:
+    '''Implementation of graph-based document summary algorithm
+
+    The main idea is to build sentence graph with the usage of
+    vector representation and tf-idf-cosine similarity to
+    make connections between sentences. Afterwards apply
+    summarization via K-means clustering of sentences and 
+    returning sentences with largest degree from each cluster.
+
+    This techniques is based on 
+    http://tcci.ccf.org.cn/conference/2018/papers/SW1.pdf
+
+    Args:
+        doc: text of the document
+        query: input query
+        summary_len: max amount of terms for output
+    
+    Returns:
+        resulting summary (title + summary text)
+    '''
+    result = [doc.title, '\n']
+    thresh = 0.1
+
+    doc_clear = re.sub(r'[’”]', ' ', doc.body)
+    doc_clear = re.sub(r'\s+', ' ', doc_clear)
+    sentences = nltk.sent_tokenize(doc_clear)
+
+    graph = build_graph(doc_clear, sentences, thresh)
+    node2vec = Node2Vec(graph, dimensions=20, num_walks=5, quiet=True, p=1)
+    model = node2vec.fit()
+    wvects = np.array([model.wv[str(i)] for i in range(len(sentences))])
+
+    kmeans = KMeans(n_clusters=5)
+    clusters = np.array(kmeans.fit_predict(wvects))
+
+    sent_ids = []
+    for i in range(5):
+        nodes = np.argwhere(clusters == i)
+        max_degree, _id = -1, -1
+        for j in range(len(nodes)):
+            if graph.degree(nodes[j][0]) > max_degree:
+                _id = nodes[j][0]
+                max_degree = graph.degree(nodes[j][0])
+        sent_ids.append(_id)
+
+    for i in sorted(sent_ids):
+        result.append(sentences[i] + ' ')
+            
+    return ''.join(result)
+
 
 def doc_sum_3(doc: Article, query: str, summary_len: int) -> str:
     pass
 
 def compare_doc_sum(doc: Article, query: str, summary_len: int = 50):
-    sum_methods = [doc_sum_1, doc_sum_2, doc_sum_3]
+    sum_methods = [naive_sum, graph_sum, doc_sum_3]
     for method in sum_methods:
         print(f"Document summary for {method.__name__}")
         print(method(doc, query, summary_len))
