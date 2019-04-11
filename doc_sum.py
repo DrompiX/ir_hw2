@@ -26,13 +26,29 @@ def clean_text(text: str) -> str:
 
 
 def get_text_sentences(text: str) -> List[str]:
-    ''''''
+    '''Cleanes text and splits into sentences with nltk
+
+    Args:
+        text: text to be splitted into sentences
+    
+    Returns:
+        list of sentences
+    '''
     new_text = clean_text(text)
     sentences = nltk.sent_tokenize(new_text)
     return sentences
 
 
 def preprocess(text: str, remove_stop: bool=True) -> str:
+    '''Preprocess text and possibly remove stopwords
+    
+    Args:
+        text: text to be preprocessed
+        remove_stop: whether to remove stop words
+    
+    Returns:
+        preprocessed text
+    '''
     return [t for t in engine.preprocess(text) if t not in stop_words]
 
 
@@ -40,7 +56,7 @@ def read_data(path: str = "articles50000.csv") -> List[Article]:
     '''Read data from original articles csv file
     
     Args:
-        path (str): path to input csv file with second column
+        path: path to input csv file with second column
             containing title and third column - text
 
     Returns:
@@ -76,8 +92,6 @@ def naive_sum(doc: Article, query: str, summary_len: int) -> str:
     sentences = get_text_sentences(doc.body)
     
     # calculating number of term occurences in query and text
-    # q_tf = Counter(engine.preprocess(query))
-    # tf = Counter(engine.preprocess(query))
     q_tf = Counter(preprocess(query))
     tf = Counter(preprocess(doc.body))
 
@@ -91,8 +105,6 @@ def naive_sum(doc: Article, query: str, summary_len: int) -> str:
     for sentence in sentences:
         # consider only short sentences
         if len(sentence.split(' ')) < 35:
-            # for term in engine.tokenize(sentence):
-                # if term not in stop_words:
             for term in preprocess(sentence):
                 if sentence in score_results:
                     score_results[sentence] += tf[term] * q_tf[term]
@@ -113,21 +125,13 @@ def naive_sum(doc: Article, query: str, summary_len: int) -> str:
     return ''.join(result)
 
 
-class Graph(NamedTuple):
-    V: np.ndarray
-    E: np.ndarray
-
-
 def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
     '''TODO: add docstring'''
     n = len(sentences)
-    # preproc = lambda s: [t for t in engine.preprocess(s) if t not in stop_words]
-    # tf = Counter([t for t in engine.preprocess(text) if t not in stop_words])
     tf = Counter(preprocess(text))
 
     idf = Counter()
     for s in sentences:
-        # for term in set([t for t in engine.preprocess(s) if t not in stop_words]):
         for term in set(preprocess(s)):
             idf[term] += 1
 
@@ -136,7 +140,6 @@ def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
     
     V = np.zeros(shape=(n, len(tf)), dtype='float64')
     for i in range(len(sentences)):
-        # s_terms = [t for t in engine.preprocess(sentences[i]) if t not in stop_words]
         s_terms = preprocess(sentences[i])
         for j in range(len(tf)):
             term = list(tf.keys())[j]
@@ -153,17 +156,6 @@ def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
 
     return G
 
-
-# def get_modularity(adj: np.ndarray, graph: nx.Graph, clusters: np.ndarray) -> float:
-#     q = 0.0
-#     for i in range(len(clusters)):
-#         for j in range(len(clusters)):
-#             if clusters[i] == clusters[j]:
-#                 k_i, k_j = graph.degree[i], graph.degree[j]
-#                 print(q, k_i, k_j)
-#                 q += adj[i, j] - k_i * k_j / (2 * len(adj))
-    
-#     return q / (2 * len(adj))
 
 def graph_sum(doc: Article, query: str, summary_len: int) -> str:
     '''Implementation of graph-based document summary algorithm
@@ -188,9 +180,6 @@ def graph_sum(doc: Article, query: str, summary_len: int) -> str:
     result = [doc.title, '\n']
     thresh = 0.1
 
-    # doc_clear = re.sub(r'[’”“]', ' ', doc.body)
-    # doc_clear = re.sub(r'\s+', ' ', doc_clear)
-    # sentences = nltk.sent_tokenize(doc_clear)
     sentences = get_text_sentences(doc.body)
 
     graph = build_graph(doc.body, sentences, thresh)
@@ -218,16 +207,38 @@ def graph_sum(doc: Article, query: str, summary_len: int) -> str:
 
 
 def text_rank(doc: Article, query: str, summary_len: int) -> str:
+    '''Call to TextRank implementation of gensim module
+
+    Was selected for comparison with other implemented methods.
+
+    Args:
+        doc: text of the document
+        query: input query
+        summary_len: max amount of terms for output
+    
+    Returns:
+        resulting summary (title + summary text)
+    '''
     summary = summarize(clean_text(doc.body), word_count=summary_len)
     return doc.title + '\n' + summary
 
+
+# TODO: redo `summary_len` into `sentence_cnt`
 def compare_doc_sum(doc: Article, query: str, summary_len: int = 50):
+    '''Funnction launches all summarization methods one-by-one
+
+    Args:
+        doc: text of the document
+        query: input query
+        summary_len: max amount of terms for output
+    '''
     sum_methods = [naive_sum, graph_sum, text_rank]
     print('---------------------------------------')
     for method in sum_methods:
         print(f"Document summary for {method.__name__}")
         print(method(doc, query, summary_len))
         print('---------------------------------------')
+
 
 def launch():
     data_path = 'data.nosync/articles50000.csv'
@@ -248,7 +259,7 @@ def launch():
         engine.load_index(paths=save_paths)
         print("* Index was loaded successfully! *")
     
-    q = "Tesla model X"
+    q = "Macbook pro"
     docs = engine.answer_query(q, 2)
     print(docs[0])
     compare_doc_sum(docs[0], q, 100)
