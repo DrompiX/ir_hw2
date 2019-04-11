@@ -16,6 +16,9 @@ class Article(NamedTuple):
     title: str
     body: str
 
+    def __repr__(self):
+        return self.title + '\n' + self.body
+
 
 def tokenize(text):
     return nltk.word_tokenize(text)
@@ -118,7 +121,7 @@ def answer_query(raw_query: str, top_k: int) -> List[Article]:
     return top_k_result
 
 
-def index_exists(paths: Dict[str, str]):
+def index_exists(paths: Dict[str, str]) -> bool:
     return os.path.isfile(paths['index'])
 
 

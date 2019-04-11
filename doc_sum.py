@@ -10,9 +10,30 @@ import re
 import numpy as np
 import networkx as nx
 from node2vec import Node2Vec
-# from node2vec import Node2Vec
+from nltk.corpus import stopwords
+from gensim.summarization.summarizer import summarize 
 
 csv.field_size_limit(sys.maxsize)
+# nltk.download('stopwords')
+stop_words = stopwords.words('english')
+
+
+def clean_text(text: str) -> str:
+    ''''''
+    clean_text = re.sub(r'[’”“]', ' ', text)
+    clean_text = re.sub(r'\s+', ' ', clean_text)
+    return clean_text
+
+
+def get_text_sentences(text: str) -> List[str]:
+    ''''''
+    new_text = clean_text(text)
+    sentences = nltk.sent_tokenize(new_text)
+    return sentences
+
+
+def preprocess(text: str, remove_stop: bool=True) -> str:
+    return [t for t in engine.preprocess(text) if t not in stop_words]
 
 
 def read_data(path: str = "articles50000.csv") -> List[Article]:
@@ -52,14 +73,13 @@ def naive_sum(doc: Article, query: str, summary_len: int) -> str:
     Returns:
         resulting summary (title + summary text)
     '''
-    # doc_clear = re.sub(r'\[[0-9]*\]', ' ', doc.body)
-    doc_clear = re.sub(r'[’”]', ' ', doc.body)
-    doc_clear = re.sub(r'\s+', ' ', doc_clear)
-    sentences = nltk.sent_tokenize(doc_clear)
+    sentences = get_text_sentences(doc.body)
     
     # calculating number of term occurences in query and text
-    q_tf = Counter(engine.preprocess(query))
-    tf = Counter(engine.preprocess(query))
+    # q_tf = Counter(engine.preprocess(query))
+    # tf = Counter(engine.preprocess(query))
+    q_tf = Counter(preprocess(query))
+    tf = Counter(preprocess(doc.body))
 
     # normalizing tf on maximum tf
     max_freq = max(tf.values())
@@ -69,9 +89,11 @@ def naive_sum(doc: Article, query: str, summary_len: int) -> str:
     # calculating score for each sentence
     score_results = {}
     for sentence in sentences:
-        for term in engine.tokenize(sentence):
-            # consider only short sentences
-            if len(sentence.split(' ')) < 25:
+        # consider only short sentences
+        if len(sentence.split(' ')) < 35:
+            # for term in engine.tokenize(sentence):
+                # if term not in stop_words:
+            for term in preprocess(sentence):
                 if sentence in score_results:
                     score_results[sentence] += tf[term] * q_tf[term]
                 else:
@@ -99,11 +121,14 @@ class Graph(NamedTuple):
 def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
     '''TODO: add docstring'''
     n = len(sentences)
-    tf = Counter(engine.preprocess(text))
+    # preproc = lambda s: [t for t in engine.preprocess(s) if t not in stop_words]
+    # tf = Counter([t for t in engine.preprocess(text) if t not in stop_words])
+    tf = Counter(preprocess(text))
 
     idf = Counter()
     for s in sentences:
-        for term in set(engine.preprocess(s)):
+        # for term in set([t for t in engine.preprocess(s) if t not in stop_words]):
+        for term in set(preprocess(s)):
             idf[term] += 1
 
     for term in idf:
@@ -111,13 +136,13 @@ def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
     
     V = np.zeros(shape=(n, len(tf)), dtype='float64')
     for i in range(len(sentences)):
-        s_terms = engine.preprocess(sentences[i])
+        # s_terms = [t for t in engine.preprocess(sentences[i]) if t not in stop_words]
+        s_terms = preprocess(sentences[i])
         for j in range(len(tf)):
             term = list(tf.keys())[j]
             V[i, j] = tf[term] * idf[term] if term in s_terms else 0.0
 
     G = nx.Graph()
-    E = np.ndarray(shape=(n, n), dtype='float64')
     for i in range(n):
         for j in range(n):
             tf_idf_cos = np.sum(np.multiply(V[i], V[j]))
@@ -125,10 +150,8 @@ def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
             if tf_idf_cos > eps:
                 G.add_edge(i, j, weight=tf_idf_cos)
                 G.add_edge(j, i, weight=tf_idf_cos)
-                # E[i, j] = tf_idf_cos
-                # E[j, i] = tf_idf_cos
 
-    return G#Graph(V, E)
+    return G
 
 
 # def get_modularity(adj: np.ndarray, graph: nx.Graph, clusters: np.ndarray) -> float:
@@ -165,12 +188,13 @@ def graph_sum(doc: Article, query: str, summary_len: int) -> str:
     result = [doc.title, '\n']
     thresh = 0.1
 
-    doc_clear = re.sub(r'[’”]', ' ', doc.body)
-    doc_clear = re.sub(r'\s+', ' ', doc_clear)
-    sentences = nltk.sent_tokenize(doc_clear)
+    # doc_clear = re.sub(r'[’”“]', ' ', doc.body)
+    # doc_clear = re.sub(r'\s+', ' ', doc_clear)
+    # sentences = nltk.sent_tokenize(doc_clear)
+    sentences = get_text_sentences(doc.body)
 
-    graph = build_graph(doc_clear, sentences, thresh)
-    node2vec = Node2Vec(graph, dimensions=20, num_walks=5, quiet=True, p=1)
+    graph = build_graph(doc.body, sentences, thresh)
+    node2vec = Node2Vec(graph, dimensions=20, num_walks=10, quiet=True, p=1)
     model = node2vec.fit()
     wvects = np.array([model.wv[str(i)] for i in range(len(sentences))])
 
@@ -193,14 +217,17 @@ def graph_sum(doc: Article, query: str, summary_len: int) -> str:
     return ''.join(result)
 
 
-def doc_sum_3(doc: Article, query: str, summary_len: int) -> str:
-    pass
+def text_rank(doc: Article, query: str, summary_len: int) -> str:
+    summary = summarize(clean_text(doc.body), word_count=summary_len)
+    return doc.title + '\n' + summary
 
 def compare_doc_sum(doc: Article, query: str, summary_len: int = 50):
-    sum_methods = [naive_sum, graph_sum, doc_sum_3]
+    sum_methods = [naive_sum, graph_sum, text_rank]
+    print('---------------------------------------')
     for method in sum_methods:
         print(f"Document summary for {method.__name__}")
         print(method(doc, query, summary_len))
+        print('---------------------------------------')
 
 def launch():
     data_path = 'data.nosync/articles50000.csv'
@@ -221,8 +248,9 @@ def launch():
         engine.load_index(paths=save_paths)
         print("* Index was loaded successfully! *")
     
-    q = "Tesla model x"
+    q = "Tesla model X"
     docs = engine.answer_query(q, 2)
+    print(docs[0])
     compare_doc_sum(docs[0], q, 100)
 
 if __name__ == '__main__':
