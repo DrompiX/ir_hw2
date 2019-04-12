@@ -223,6 +223,59 @@ def text_rank(doc: Article, query: str, summary_len: int) -> str:
     return doc.title + '\n' + summary
 
 
+def get_similarity(sent1: str, sent2: str) -> np.float32:
+    terms1 = preprocess(sent1)
+    terms2 = preprocess(sent2)
+
+    terms = list(set(terms1 + terms2))
+
+    sent1_vec = np.zeros(len(terms), dtype='int32')
+    sent2_vec = np.zeros(len(terms), dtype='int32')
+
+    for term in terms1:
+        sent1_vec[terms.index(term)] += 1
+    
+    for term in terms2:
+        sent2_vec[terms.index(term)] += 1
+    
+    return 1 - nltk.cluster.cosine_distance(sent1_vec, sent2_vec)
+
+
+def get_similarity_matrix(sentences: List[str]) -> np.ndarray:
+    n = len(sentences)
+    sim_matrix = np.zeros((n, n), dtype='float32')
+
+    for i in range(n):
+        for j in range(n):
+            if i != j:
+                sim_matrix[i, j] = get_similarity(sentences[i], sentences[j])
+        
+    return sim_matrix
+
+
+def cosine_pagerank(doc: Article, query: str, summary_len: int) -> str:
+    result = [doc.title, '\n']
+    
+    sentences = get_text_sentences(doc.body)
+    similarity_matrix = get_similarity_matrix(sentences)
+    
+    graph = nx.from_numpy_matrix(similarity_matrix)
+    sentence_scores = nx.pagerank(graph)
+
+    print(sorted(((sentence_scores[i], s) for i, s in enumerate(sentences)), reverse=True))
+    cur_length = 0
+    sentence_scores = sorted(sentence_scores.items(), key=lambda kv: kv[1], reverse=True)
+    for sent_id, _ in sentence_scores:
+        sent_len = len(sentences[sent_id].split(' '))
+        if cur_length + sent_len <= summary_len:
+            result.append(sentences[sent_id] + ' ')
+            cur_length += sent_len
+        else:
+            break
+    
+    return ''.join(result)
+
+
 # TODO: redo `summary_len` into `sentence_cnt`
 def compare_doc_sum(doc: Article, query: str, summary_len: int = 50):
     '''Funnction launches all summarization methods one-by-one
@@ -232,7 +285,7 @@ def compare_doc_sum(doc: Article, query: str, summary_len: int = 50):
         query: input query
         summary_len: max amount of terms for output
     '''
-    sum_methods = [naive_sum, graph_sum, text_rank]
+    sum_methods = [naive_sum, graph_sum, text_rank, cosine_pagerank]
     print('---------------------------------------')
     for method in sum_methods:
         print(f"Document summary for {method.__name__}")
