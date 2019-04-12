@@ -72,7 +72,7 @@ def read_data(path: str = "articles50000.csv") -> List[Article]:
     return result
 
 
-def naive_sum(doc: Article, query: str, summary_len: int) -> str:
+def naive_sum(doc: Article, query: str, sentence_cnt: int) -> str:
     '''Implementaion of naive text summarization
     
     Idea is to take document data, preprocess it, divide into
@@ -84,7 +84,7 @@ def naive_sum(doc: Article, query: str, summary_len: int) -> str:
     Args:
         doc: text of the document
         query: input query
-        summary_len: max amount of terms for output
+        sentence_cnt: max amount of terms for output
     
     Returns:
         resulting summary (title + summary text)
@@ -104,23 +104,16 @@ def naive_sum(doc: Article, query: str, summary_len: int) -> str:
     score_results = {}
     for sentence in sentences:
         # consider only short sentences
-        if len(sentence.split(' ')) < 35:
-            for term in preprocess(sentence):
-                if sentence in score_results:
-                    score_results[sentence] += tf[term] * q_tf[term]
-                else:
-                    score_results[sentence] = tf[term] * q_tf[term]
+        for term in preprocess(sentence):
+            if sentence in score_results:
+                score_results[sentence] += tf[term] * q_tf[term]
+            else:
+                score_results[sentence] = tf[term] * q_tf[term]
     
-    result = [doc.title, '\n']
-    cur_length = 0
     score_results = sorted(score_results.items(), key=lambda kv: kv[1], reverse=True)
-    for sentence, _ in score_results:
-        sent_len = len(sentence.split(' '))
-        if cur_length + sent_len <= summary_len:
-            result.append(sentence + ' ')
-            cur_length += sent_len
-        else:
-            break
+    result = [doc.title, '\n']
+    for i in range(sentence_cnt):
+        result.append(score_results[i][0] + ' ')
     
     return ''.join(result)
 
@@ -157,7 +150,7 @@ def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
     return G
 
 
-def graph_sum(doc: Article, query: str, summary_len: int) -> str:
+def graph_sum(doc: Article, query: str, sentence_cnt: int) -> str:
     '''Implementation of graph-based document summary algorithm
 
     The main idea is to build sentence graph with the usage of
@@ -172,7 +165,7 @@ def graph_sum(doc: Article, query: str, summary_len: int) -> str:
     Args:
         doc: text of the document
         query: input query
-        summary_len: max amount of terms for output
+        sentence_cnt: max amount of terms for output
     
     Returns:
         resulting summary (title + summary text)
@@ -191,7 +184,7 @@ def graph_sum(doc: Article, query: str, summary_len: int) -> str:
     clusters = np.array(kmeans.fit_predict(wvects))
 
     sent_ids = []
-    for i in range(5):
+    for i in range(sentence_cnt):
         nodes = np.argwhere(clusters == i)
         max_degree, _id = -1, -1
         for j in range(len(nodes)):
@@ -204,23 +197,6 @@ def graph_sum(doc: Article, query: str, summary_len: int) -> str:
         result.append(sentences[i] + ' ')
             
     return ''.join(result)
-
-
-def text_rank(doc: Article, query: str, summary_len: int) -> str:
-    '''Call to TextRank implementation of gensim module
-
-    Was selected for comparison with other implemented methods.
-
-    Args:
-        doc: text of the document
-        query: input query
-        summary_len: max amount of terms for output
-    
-    Returns:
-        resulting summary (title + summary text)
-    '''
-    summary = summarize(clean_text(doc.body), word_count=summary_len)
-    return doc.title + '\n' + summary
 
 
 def get_similarity(sent1: str, sent2: str) -> np.float32:
@@ -253,7 +229,20 @@ def get_similarity_matrix(sentences: List[str]) -> np.ndarray:
     return sim_matrix
 
 
-def cosine_pagerank(doc: Article, query: str, summary_len: int) -> str:
+def cosine_pagerank(doc: Article, query: str, sentence_cnt: int) -> str:
+    '''Text summarization algorithm
+
+    This method is based on sentence similarity (using cosine similarity)
+    and subsequent application of pagerank algorithm to resulting graph
+
+    Args:
+        doc: text of the document
+        query: input query
+        sentence_cnt: max amount of terms for output
+    
+    Returns:
+        resulting summary (title + summary text)
+    '''
     result = [doc.title, '\n']
     
     sentences = get_text_sentences(doc.body)
@@ -262,22 +251,14 @@ def cosine_pagerank(doc: Article, query: str, summary_len: int) -> str:
     graph = nx.from_numpy_matrix(similarity_matrix)
     sentence_scores = nx.pagerank(graph)
 
-    print(sorted(((sentence_scores[i], s) for i, s in enumerate(sentences)), reverse=True))
-    cur_length = 0
     sentence_scores = sorted(sentence_scores.items(), key=lambda kv: kv[1], reverse=True)
-    for sent_id, _ in sentence_scores:
-        sent_len = len(sentences[sent_id].split(' '))
-        if cur_length + sent_len <= summary_len:
-            result.append(sentences[sent_id] + ' ')
-            cur_length += sent_len
-        else:
-            break
+    for i in range(sentence_cnt):
+        result.append(sentences[sentence_scores[i][0]] + ' ')
     
     return ''.join(result)
 
 
-# TODO: redo `summary_len` into `sentence_cnt`
-def compare_doc_sum(doc: Article, query: str, summary_len: int = 50):
+def compare_doc_sum(doc: Article, query: str, sentence_cnt: int = 5):
     '''Funnction launches all summarization methods one-by-one
 
     Args:
@@ -285,11 +266,15 @@ def compare_doc_sum(doc: Article, query: str, summary_len: int = 50):
         query: input query
         summary_len: max amount of terms for output
     '''
-    sum_methods = [naive_sum, graph_sum, text_rank, cosine_pagerank]
+    if len(get_text_sentences(doc.body)) < sentence_cnt:
+        raise ValueError("Retrieved article has" +
+            f"less than {sentence_cnt} sentences")
+        
+    sum_methods = [naive_sum, graph_sum, cosine_pagerank]
     print('---------------------------------------')
     for method in sum_methods:
         print(f"Document summary for {method.__name__}")
-        print(method(doc, query, summary_len))
+        print(method(doc, query, sentence_cnt))
         print('---------------------------------------')
 
 
@@ -315,7 +300,7 @@ def launch():
     q = "Macbook pro"
     docs = engine.answer_query(q, 2)
     print(docs[0])
-    compare_doc_sum(docs[0], q, 100)
+    compare_doc_sum(docs[0], q, 7)
 
 if __name__ == '__main__':
     launch()
