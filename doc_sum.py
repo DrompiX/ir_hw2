@@ -18,6 +18,26 @@ csv.field_size_limit(sys.maxsize)
 stop_words = stopwords.words('english')
 
 
+def read_data(path: str = "articles50000.csv") -> List[Article]:
+    '''Read data from original articles csv file
+    
+    Args:
+        path: path to input csv file with second column
+            containing title and third column - text
+
+    Returns:
+        List of read Articles
+    '''
+    result = {}
+    with open(path) as csvfile:
+        articles = csv.reader(csvfile, delimiter=',')
+        next(articles, None)
+        for aid, article in enumerate(articles):
+            result[aid] = Article(title=article[1], body=article[2])
+    
+    return result
+
+
 def clean_text(text: str) -> str:
     ''''''
     clean_text = re.sub(r'[’”“]', ' ', text)
@@ -50,26 +70,6 @@ def preprocess(text: str, remove_stop: bool=True) -> str:
         preprocessed text
     '''
     return [t for t in engine.preprocess(text) if t not in stop_words]
-
-
-def read_data(path: str = "articles50000.csv") -> List[Article]:
-    '''Read data from original articles csv file
-    
-    Args:
-        path: path to input csv file with second column
-            containing title and third column - text
-
-    Returns:
-        List of read Articles
-    '''
-    result = []
-    with open(path) as csvfile:
-        articles = csv.reader(csvfile, delimiter=',')
-        next(articles, None)
-        for article in articles:
-            result.append(Article(title=article[1], body=article[2]))
-    
-    return result
 
 
 def naive_sum(doc: Article, query: str, sentence_cnt: int) -> str:

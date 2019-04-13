@@ -29,7 +29,8 @@ def preprocess(text):
     return [w for w in tokenized if w.isalpha()]
 
 
-def build_index(docs: List[Article], paths: dict, dir: str):
+# def build_index(docs: List[Article], paths: dict, dir: str):
+def build_index(docs: Dict[int, Article], paths: dict, dir: str):
     global index, doc_lengths, documents
     index = {}
     doc_lengths = {}
@@ -39,7 +40,8 @@ def build_index(docs: List[Article], paths: dict, dir: str):
     processed = 0
     total = len(docs)
     tik = total / 100
-    for doc_id, doc in enumerate(docs):
+
+    for doc_id, doc in docs.items():#enumerate(docs):
         if processed % tik == 0:
             perc = int(processed / total * 100)
             sys.stdout.write(f"\rDocuments processed - {perc}%")
