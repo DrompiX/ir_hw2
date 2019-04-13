@@ -80,7 +80,8 @@ def build_index(docs: Dict[int, Article], paths: dict, dir: str):
         pickle.dump(documents, dump_file)
 
 
-def okapi_scoring(query: str, doc_lengths: Dict[int, int], index, k1=1.2, b=0.75):
+def okapi_scoring(query: Dict[str, int], doc_lengths: Dict[int, int], 
+                  index, k1=1.2, b=0.75):
     '''
     Computes scores for all documents containing any of query terms
     according to the Okapi BM25 ranking function, refer to wikipedia,
@@ -106,9 +107,13 @@ def okapi_scoring(query: str, doc_lengths: Dict[int, int], index, k1=1.2, b=0.75
     return dict(scores)
 
 
-def answer_query(raw_query: str, top_k: int, get_ids=False) -> List[Article]:
-    query = preprocess(raw_query)
-    query = Counter(query)
+def answer_query(in_query, top_k, get_ids=False, is_raw=True):
+    if is_raw:
+        query = preprocess(in_query)
+        query = Counter(query)
+    else:
+        query = in_query
+    
     scores = okapi_scoring(query, doc_lengths, index)
     h = []
     for doc_id in scores.keys():
@@ -116,16 +121,16 @@ def answer_query(raw_query: str, top_k: int, get_ids=False) -> List[Article]:
         heapq.heappush(h, (neg_score, doc_id))
 
     top_k_result = []
+    top_k_ids = []
     top_k = min(top_k, len(h))
     for _ in range(top_k):
         best_so_far = heapq.heappop(h)
         if get_ids:
-            article = best_so_far[1]
-        else:
-            article = documents[best_so_far[1]]
-        top_k_result.append(article)
+            top_k_ids.append(best_so_far[1])
+        
+        top_k_result.append(documents[best_so_far[1]])
 
-    return top_k_result
+    return top_k_result if not get_ids else dict(zip(top_k_ids, top_k_result))
 
 
 def index_exists(paths: Dict[str, str]) -> bool:
