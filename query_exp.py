@@ -97,6 +97,7 @@ def launch():
     }
 
     documents, queries, relevance = read_data(data_path)
+
     if not engine.index_exists(paths=save_paths):
         print("* Building index... *")
         engine.build_index(docs=documents, paths=save_paths, dir=save_dir)
@@ -105,6 +106,14 @@ def launch():
         print("* Loading index... *")
         engine.load_index(paths=save_paths)
         print("* Index was loaded successfully! *")
+    
+    top_k_results = []
+    for q_id in queries:
+        if q_id != 0:
+            q_results = engine.answer_query(queries[q_id], 10, get_ids=True)
+            top_k_results.append(q_results)
+
+    print(NDCG(top_k_results, relevance, 10))
 
 
 if __name__ == '__main__':

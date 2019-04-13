@@ -17,8 +17,10 @@ class Article(NamedTuple):
     body: str
 
     def __repr__(self):
-        return self.title + '\n' + self.body
-
+        if self.title != '' and self.body != '':
+            return self.title + '\n' + self.body
+        else:
+            return self.title + self.body
 
 def tokenize(text):
     return nltk.word_tokenize(text)
@@ -46,7 +48,7 @@ def build_index(docs: Dict[int, Article], paths: dict, dir: str):
             perc = int(processed / total * 100)
             sys.stdout.write(f"\rDocuments processed - {perc}%")
             sys.stdout.flush()
-                
+        
         documents[doc_id] = doc
 
         doc_terms = preprocess(doc.title + doc.body)
@@ -104,7 +106,7 @@ def okapi_scoring(query: str, doc_lengths: Dict[int, int], index, k1=1.2, b=0.75
     return dict(scores)
 
 
-def answer_query(raw_query: str, top_k: int) -> List[Article]:
+def answer_query(raw_query: str, top_k: int, get_ids=False) -> List[Article]:
     query = preprocess(raw_query)
     query = Counter(query)
     scores = okapi_scoring(query, doc_lengths, index)
@@ -117,7 +119,10 @@ def answer_query(raw_query: str, top_k: int) -> List[Article]:
     top_k = min(top_k, len(h))
     for _ in range(top_k):
         best_so_far = heapq.heappop(h)
-        article = documents[best_so_far[1]]
+        if get_ids:
+            article = best_so_far[1]
+        else:
+            article = documents[best_so_far[1]]
         top_k_result.append(article)
 
     return top_k_result
