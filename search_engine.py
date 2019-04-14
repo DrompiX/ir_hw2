@@ -96,7 +96,7 @@ def okapi_scoring(query: Dict[str, int], doc_lengths: Dict[int, int],
     scores = Counter()
     avgdl = sum(doc_lengths.values()) / len(doc_lengths)
     for term in query:
-        if term in index:
+        if term in index and query[term] > 1e-15:
             idf = math.log10(len(doc_lengths) / (len(index[term]) - 1))
             for i in range(1, len(index[term])):
                 doc_id, doc_freq = index[term][i]

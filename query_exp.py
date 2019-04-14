@@ -102,32 +102,47 @@ def docs2vecs(docs: Dict[int, Article]):
 
 
 def rocchio(query: str, relevance: List[Tuple[int, int]],
-            top_docs: Dict[int, Article], alph=1.0, beta=0.75, gamma=0):
+            top_docs: Dict[int, Article], alph=1.0, beta=0.75, gamma=0.15):
     top_docs_vectors = docs2vecs(top_docs)
     query_vector = Counter(engine.preprocess(query))
     new_query = dict((k, v * alph) for k, v in query_vector.items())
+    
     center = dict((k, 0) for k in query_vector.keys())
-
-    rel_cnt = 0
+    relevant_docs = set()
     for doc_id, _ in relevance:
         if doc_id in top_docs_vectors:
-            rel_cnt += 1
+            relevant_docs.add(doc_id)
             for term in top_docs_vectors[doc_id]:
-                if top_docs_vectors[doc_id][term] > 0:
-                    if term in center:
-                        center[term] += top_docs_vectors[doc_id][term]
-                    else:
-                        center[term] = top_docs_vectors[doc_id][term]
+                # if top_docs_vectors[doc_id][term] > 0:
+                if term in center:
+                    center[term] += top_docs_vectors[doc_id][term]
+                else:
+                    center[term] = top_docs_vectors[doc_id][term]
 
-    if rel_cnt == 0:
-        # rel_cnt = 1e5
+    neg_center = dict((k, 0) for k in query_vector.keys())
+    for doc_id in top_docs_vectors:
+        if doc_id not in relevant_docs:
+            for term in top_docs_vectors[doc_id]:
+                if term in neg_center:
+                    neg_center[term] += top_docs_vectors[doc_id][term]
+                else:
+                    neg_center[term] = top_docs_vectors[doc_id][term]
+    
+    if len(relevant_docs) == 0:
         return new_query
 
     for term in center:
         if term in new_query:
-            new_query[term] = new_query[term] + beta * 1 / rel_cnt * center[term]
+            new_query[term] += beta * 1 / len(relevant_docs) * center[term]
         else:
-            new_query[term] = beta * 1 / rel_cnt * center[term]
+            new_query[term] = beta * 1 / len(relevant_docs) * center[term]
+    
+    non_rel_cnt = len(top_docs_vectors) - len(relevant_docs)
+    if gamma > 0 and non_rel_cnt > 0:
+        for term in neg_center:
+            if term in new_query:
+                new_query[term] -= gamma * 1 / non_rel_cnt * neg_center[term]
+                new_query[term] = max(0, new_query[term])
     
     return new_query
 
@@ -178,11 +193,11 @@ def launch():
             q_results = engine.answer_query(queries[q_id], 15, get_ids=True)
             top_k_results.append(list(q_results.keys()))
 
-            rf_query = rocchio(queries[q_id], relevance[q_id], q_results)
+            rf_query = rocchio(queries[q_id], relevance[q_id], q_results, beta=0.75, gamma=0.15)
             rf_q_results = engine.answer_query(rf_query, 15, get_ids=True, is_raw=False)
             top_k_rf.append(list(rf_q_results.keys()))
 
-            prf_query = pseudo_relevance_feedback(queries[q_id], q_results, 5, beta=0.75)
+            prf_query = pseudo_relevance_feedback(queries[q_id], q_results, 5, beta=0.75, gamma=0.0)
             prf_q_results = engine.answer_query(prf_query, 15, get_ids=True, is_raw=False)
             top_k_prf.append(list(prf_q_results.keys()))
 
