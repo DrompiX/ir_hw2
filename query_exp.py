@@ -70,11 +70,12 @@ def NDCG(top_k_results, relevance, top_k):
     '''
     ndcg_score = 0.0
     for j, scores in relevance.items():
-        doc2relevance = combine_score_and_docs(top_k_results[j - 1], scores)
-        dcg_score = DCG(doc2relevance, top_k)
-        upd_score = list(map(lambda x: (x[0], 5 - x[1]), scores))
-        idcg_score = DCG(sorted(upd_score, key=lambda _: _[1], reverse=True), top_k)
-        ndcg_score += 0.0 if idcg_score == 0 else dcg_score / idcg_score
+        if j - 1 < len(top_k_results):
+            doc2relevance = combine_score_and_docs(top_k_results[j - 1], scores)
+            dcg_score = DCG(doc2relevance, top_k)
+            upd_score = list(map(lambda x: (x[0], 5 - x[1]), scores))
+            idcg_score = DCG(sorted(upd_score, key=lambda _: _[1], reverse=True), top_k)
+            ndcg_score += 0.0 if idcg_score == 0 else dcg_score / idcg_score
         
     ndcg_score /= len(relevance)
 
@@ -83,13 +84,10 @@ def NDCG(top_k_results, relevance, top_k):
 
 def docs2vecs(docs: Dict[int, Article]):
     vectors = {}
-    # terms2ids = dict((term, t_id) for t_id, term in enumerate(engine.index))
     for doc_id, doc in docs.items():
         terms = engine.preprocess(str(doc))
-        vectors[doc_id] = Counter()#[0] * len(terms2ids)#all_terms
+        vectors[doc_id] = Counter()
         for term in terms:
-            # if term in terms2ids:
-                # TODO: what to do with query terms not in index?
             vectors[doc_id][term] += 1
             
     for doc_id in vectors:
@@ -105,13 +103,12 @@ def docs2vecs(docs: Dict[int, Article]):
 
 def rocchio(query: str, relevance: List[Tuple[int, float]],
             top_docs: Dict[int, Article], alph=1.0, beta=0.75, gamma=0):
-    # print(sorted(relevance))
-    # print(sorted(top_docs.keys()))
     top_docs_vectors = docs2vecs(top_docs)
-    query_vector = docs2vecs({0: query})[0]
+    # query_vector = docs2vecs({0: query})[0]
+    query_vector = Counter(engine.preprocess(query))
     new_query = dict((k, v * alph) for k, v in query_vector.items())
     center = dict((k, 0) for k in query_vector.keys())
-    # print(center)
+
     rel_cnt = 0
     for doc_id, _ in relevance:
         if doc_id in top_docs_vectors:
@@ -123,17 +120,17 @@ def rocchio(query: str, relevance: List[Tuple[int, float]],
                     else:
                         center[term] = top_docs_vectors[doc_id][term]
 
-    # print(center)
-    # new_query = [v + beta * 1 / rel_cnt * center[i] for i, v in enumerate(new_query)]
     if rel_cnt == 0:
-        rel_cnt = 10000
+        rel_cnt = 1e5
+
     for term in center:
         if term in new_query:
             new_query[term] = new_query[term] + beta * 1 / rel_cnt * center[term]
         else:
             new_query[term] = beta * 1 / rel_cnt * center[term]
     
-    return query
+    return new_query
+
 
 def global_method1():
     pass
@@ -163,11 +160,17 @@ def launch():
     top_k_modified = []
     for q_id in queries:
         if q_id != 0:
-            q_results = engine.answer_query(queries[q_id], 15, get_ids=True)
-            top_k_results.append(q_results.keys())
+            # print(queries[q_id])
+            q_results = engine.answer_query(queries[q_id], 10, get_ids=True)
+            top_k_results.append(list(q_results.keys()))
+            # print(sorted(top_k_results[-1]))
             new_query = rocchio(queries[q_id], relevance[q_id], q_results)
-            new_q_results = engine.answer_query(new_query, 15, get_ids=True, is_raw=False)
-            top_k_modified.append(new_q_results.keys())
+            # print(new_query)
+            new_q_results = engine.answer_query(new_query, 10, get_ids=True, is_raw=False)
+            top_k_modified.append(list(new_q_results.keys()))
+            # print(sorted(top_k_modified[-1]))
+            # print(relevance[q_id])
+            # input()
 
     print(NDCG(top_k_results, relevance, 15))
     print(NDCG(top_k_modified, relevance, 15))
