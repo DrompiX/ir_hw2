@@ -101,10 +101,9 @@ def docs2vecs(docs: Dict[int, Article]):
     return vectors
 
 
-def rocchio(query: str, relevance: List[Tuple[int, float]],
+def rocchio(query: str, relevance: List[Tuple[int, int]],
             top_docs: Dict[int, Article], alph=1.0, beta=0.75, gamma=0):
     top_docs_vectors = docs2vecs(top_docs)
-    # query_vector = docs2vecs({0: query})[0]
     query_vector = Counter(engine.preprocess(query))
     new_query = dict((k, v * alph) for k, v in query_vector.items())
     center = dict((k, 0) for k in query_vector.keys())
@@ -121,7 +120,8 @@ def rocchio(query: str, relevance: List[Tuple[int, float]],
                         center[term] = top_docs_vectors[doc_id][term]
 
     if rel_cnt == 0:
-        rel_cnt = 1e5
+        # rel_cnt = 1e5
+        return new_query
 
     for term in center:
         if term in new_query:
@@ -130,6 +130,20 @@ def rocchio(query: str, relevance: List[Tuple[int, float]],
             new_query[term] = beta * 1 / rel_cnt * center[term]
     
     return new_query
+
+
+def pseudo_relevance_feedback(query: str, top_docs: Dict[int, Article],
+                              relevant_n=5, alph=1.0, beta=0.75, gamma=0):
+    relevance = []
+    relevant_cnt = min(int(len(top_docs) / 2), relevant_n)
+    for doc_id in top_docs:
+        if relevant_cnt == 0:
+            break
+        else:
+            relevance.append((doc_id, 1))
+            relevant_cnt -= 1
+    
+    return rocchio(query, relevance, top_docs, alph, beta, gamma)
 
 
 def global_method1():
@@ -157,23 +171,24 @@ def launch():
         print("* Index was loaded successfully! *")
     
     top_k_results = []
-    top_k_modified = []
+    top_k_rf = []
+    top_k_prf = []
     for q_id in queries:
         if q_id != 0:
-            # print(queries[q_id])
-            q_results = engine.answer_query(queries[q_id], 10, get_ids=True)
+            q_results = engine.answer_query(queries[q_id], 15, get_ids=True)
             top_k_results.append(list(q_results.keys()))
-            # print(sorted(top_k_results[-1]))
-            new_query = rocchio(queries[q_id], relevance[q_id], q_results)
-            # print(new_query)
-            new_q_results = engine.answer_query(new_query, 10, get_ids=True, is_raw=False)
-            top_k_modified.append(list(new_q_results.keys()))
-            # print(sorted(top_k_modified[-1]))
-            # print(relevance[q_id])
-            # input()
 
-    print(NDCG(top_k_results, relevance, 15))
-    print(NDCG(top_k_modified, relevance, 15))
+            rf_query = rocchio(queries[q_id], relevance[q_id], q_results)
+            rf_q_results = engine.answer_query(rf_query, 15, get_ids=True, is_raw=False)
+            top_k_rf.append(list(rf_q_results.keys()))
+
+            prf_query = pseudo_relevance_feedback(queries[q_id], q_results, 5, beta=0.75)
+            prf_q_results = engine.answer_query(prf_query, 15, get_ids=True, is_raw=False)
+            top_k_prf.append(list(prf_q_results.keys()))
+
+    print('Raw query NDCG:', NDCG(top_k_results, relevance, 15))
+    print('Relevance feedback (Rocchio) NDCG:', NDCG(top_k_rf, relevance, 15))
+    print('Pseudo relevance feedback (Rocchio) NDCG:', NDCG(top_k_prf, relevance, 15))
 
 
 if __name__ == '__main__':
