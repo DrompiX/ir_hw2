@@ -300,7 +300,8 @@ def launch():
     q = "Macbook pro"
     docs = engine.answer_query(q, 2)
     print(docs[0])
-    compare_doc_sum(docs[0], q, 7)
+    compare_doc_sum(docs[0], q, 5)
+
 
 if __name__ == '__main__':
     launch()

@@ -1,10 +1,17 @@
 import json
 import re
+import sys
 import numpy as np
 import search_engine as engine
 from search_engine import Article
 from typing import List, Tuple, Dict
 from collections import Counter
+from nltk.corpus import wordnet, stopwords
+# import nltk
+# nltk.download('wordnet')
+
+stop_words = stopwords.words('english')
+
 
 def read_data(path: str):
     """
@@ -17,7 +24,6 @@ def read_data(path: str):
     queries = {}
     relevance = {}
     for doc in json.load(open(path + 'cranfield_data.json')):
-        # if doc['body'] != '':
         title = re.sub(r'\s+', ' ', doc['title'])
         body = re.sub(r'\s+', ' ', doc['body'][len(doc['title']):])
         documents[doc['id']] = Article(title=title, body=body)
@@ -32,6 +38,19 @@ def read_data(path: str):
         else:
             relevance[query_id] = [(doc_id, rel['position'])]
     return documents, queries, relevance
+
+
+def preprocess(text: str, remove_stop: bool=True) -> str:
+    '''Preprocess text and possibly remove stopwords
+    
+    Args:
+        text: text to be preprocessed
+        remove_stop: whether to remove stop words
+    
+    Returns:
+        preprocessed text
+    '''
+    return [t for t in engine.preprocess(text) if t not in stop_words]
 
 
 def combine_score_and_docs(docs, scores):
@@ -85,7 +104,7 @@ def NDCG(top_k_results, relevance, top_k):
 def docs2vecs(docs: Dict[int, Article]):
     vectors = {}
     for doc_id, doc in docs.items():
-        terms = engine.preprocess(str(doc))
+        terms = preprocess(str(doc))
         vectors[doc_id] = Counter()
         for term in terms:
             vectors[doc_id][term] += 1
@@ -104,7 +123,7 @@ def docs2vecs(docs: Dict[int, Article]):
 def rocchio(query: str, relevance: List[Tuple[int, int]],
             top_docs: Dict[int, Article], alph=1.0, beta=0.75, gamma=0.15):
     top_docs_vectors = docs2vecs(top_docs)
-    query_vector = Counter(engine.preprocess(query))
+    query_vector = Counter(preprocess(query))
     new_query = dict((k, v * alph) for k, v in query_vector.items())
     
     center = dict((k, 0) for k in query_vector.keys())
@@ -113,7 +132,6 @@ def rocchio(query: str, relevance: List[Tuple[int, int]],
         if doc_id in top_docs_vectors:
             relevant_docs.add(doc_id)
             for term in top_docs_vectors[doc_id]:
-                # if top_docs_vectors[doc_id][term] > 0:
                 if term in center:
                     center[term] += top_docs_vectors[doc_id][term]
                 else:
@@ -147,23 +165,106 @@ def rocchio(query: str, relevance: List[Tuple[int, int]],
     return new_query
 
 
-def pseudo_relevance_feedback(query: str, top_docs: Dict[int, Article],
-                              relevant_n=5, alph=1.0, beta=0.75, gamma=0):
+def get_k_relevant_docs(docs, k):
     relevance = []
-    relevant_cnt = min(int(len(top_docs) / 2), relevant_n)
-    for doc_id in top_docs:
+    relevant_cnt = min(int(len(docs) / 2), k)
+    for doc_id in docs:
         if relevant_cnt == 0:
             break
         else:
             relevance.append((doc_id, 1))
             relevant_cnt -= 1
     
+    return relevance
+
+
+def pseudo_relevance_feedback(query: str, top_docs: Dict[int, Article],
+                              relevant_n=5, alph=1.0, beta=0.75, gamma=0):
+    relevance = get_k_relevant_docs(top_docs, relevant_n)
     return rocchio(query, relevance, top_docs, alph, beta, gamma)
 
 
-def global_method1():
-    pass
+def get_definition_words(word):
+    syns = wordnet.synsets(word)
+    print(syns)
+    return set(preprocess(syns[0].definition())) if len(syns) > 0 else set()
 
+
+def calculate_relation(term1_syns, term2_syns):
+    if len(term1_syns) > 0 and len(term2_syns) > 0:
+        return wordnet.wup_similarity(term1_syns[0], term2_syns[0])
+    else:
+        return 0
+
+
+def global_method1(query, relevant_docs, add_terms=5):
+    all_terms = set()
+    term2doc = {}
+    for doc_id, doc in relevant_docs.items():
+        terms = set(preprocess(str(doc)))
+        all_terms = all_terms | terms
+        for term in terms:
+            if term in term2doc:
+                term2doc[term].append(doc_id)
+            else:
+                term2doc[term] = [doc_id]
+    
+    idf = {}
+    for term in all_terms:
+        N = len(engine.documents)
+        N_t = len(engine.index[term]) - 1 if term in engine.index else 0
+        idf[term] = max(1e-4, np.log10((N - N_t + 0.5) / (N_t + 0.5)))
+    
+
+    relations = {}
+    terms = preprocess(query)
+    # CET - Candidate Expansion Term
+    for cet_term in all_terms:
+        for term in terms:
+            _cet = wordnet.synsets(cet_term)
+            _term = wordnet.synsets(cet_term)
+            if cet_term not in relations:
+                relations[cet_term] = {}
+            relations[cet_term][term] = calculate_relation(_cet, _term)
+    
+    doc_scores = engine.okapi_scoring(Counter(engine.preprocess(query)),
+                                      engine.doc_lengths, 
+                                      engine.index)
+    doc_scores = dict((k, v) for k, v in doc_scores.items() if k in relevant_docs)
+    max_score = max(doc_scores.values())
+    doc_scores = dict((k, v / max_score) for k, v in doc_scores.items())
+    
+    cet2score = {}
+    for cet_term in all_terms:
+        for term in terms:
+            similarity = [v for k, v in doc_scores.items() if term in term2doc and k in term2doc[term]]
+            rel = relations[cet_term][term]
+            idf_ = idf[cet_term]
+            if cet_term in cet2score:
+                cet2score[cet_term] += rel * idf_ * sum(similarity)
+            else:
+                cet2score[cet_term] = rel * idf_ * sum(similarity)
+            cet2score[cet_term] /= (1 + cet2score[cet_term])
+    
+    cet_scores = sorted(cet2score.items(), key=lambda item: item[1])
+    
+    new_query = [query]
+    for word, _ in cet_scores[-add_terms:]:
+        new_query.append(' ' + word)
+    
+    return ''.join(new_query)
+
+
+def k_relevant(docs, k):
+    relevant = {}
+    i = 0
+    for doc_id, doc in docs.items():
+        if i < k:
+            relevant[doc_id] = doc
+            i += 1
+    
+    return relevant
+        
 
 def launch():
     data_path = 'data.nosync/cranfield/'
@@ -184,27 +285,41 @@ def launch():
         print("* Loading index... *")
         engine.load_index(paths=save_paths)
         print("* Index was loaded successfully! *")
-    
+
     top_k_results = []
     top_k_rf = []
     top_k_prf = []
+    top_k_glob = []
+    processed = 0
+    top_k = 10
     for q_id in queries:
         if q_id != 0:
-            q_results = engine.answer_query(queries[q_id], 15, get_ids=True)
+            sys.stdout.write(f"\rQueries processed - {processed}/{len(queries) - 1}")
+            sys.stdout.flush()
+
+            q_results = engine.answer_query(queries[q_id], top_k, get_ids=True)
             top_k_results.append(list(q_results.keys()))
 
             rf_query = rocchio(queries[q_id], relevance[q_id], q_results, beta=0.75, gamma=0.15)
-            rf_q_results = engine.answer_query(rf_query, 15, get_ids=True, is_raw=False)
+            rf_q_results = engine.answer_query(rf_query, top_k, get_ids=True, is_raw=False)
             top_k_rf.append(list(rf_q_results.keys()))
 
             prf_query = pseudo_relevance_feedback(queries[q_id], q_results, 5, beta=0.75, gamma=0.0)
-            prf_q_results = engine.answer_query(prf_query, 15, get_ids=True, is_raw=False)
+            prf_q_results = engine.answer_query(prf_query, top_k, get_ids=True, is_raw=False)
             top_k_prf.append(list(prf_q_results.keys()))
 
-    print('Raw query NDCG:', NDCG(top_k_results, relevance, 15))
-    print('Relevance feedback (Rocchio) NDCG:', NDCG(top_k_rf, relevance, 15))
-    print('Pseudo relevance feedback (Rocchio) NDCG:', NDCG(top_k_prf, relevance, 15))
+            glob_query = global_method1(queries[q_id], k_relevant(q_results, 5), add_terms=2)
+            glob_results = engine.answer_query(glob_query, top_k, get_ids=True)
+            top_k_glob.append(list(glob_results.keys()))
 
+            processed += 1
+        # if q_id > 10:
+        #     break
+
+    print('\nRaw query NDCG:', NDCG(top_k_results, relevance, top_k))
+    print('Relevance feedback (Rocchio) NDCG:', NDCG(top_k_rf, relevance, top_k))
+    print('Pseudo relevance feedback (Rocchio) NDCG:', NDCG(top_k_prf, relevance, top_k))
+    print('Global NDCG:', NDCG(top_k_glob, relevance, top_k))
 
 if __name__ == '__main__':
     launch()
