@@ -79,13 +79,13 @@ def NDCG(top_k_results, relevance, top_k):
     '''
     Computes NDCG score for search results
 
-    # :param top_k_results: list of lists of ranked results for each query [[doc_id1, doc_id2,...], ...]
-    #                       the i-th result corresponds to (i+1)-th query_id. There may be less than top_k
-    #                       results returned for a query, but never more.
-    # :param relevance: dict, query_id:[(relevant_doc_id1, score1), (relevant_doc_id2, score2), ...]
-    # :param top_k: (max) number of results retrieved for each query, use this value to find normalization
-    #               factor for each query
-    # :return: NDCG score
+    :param top_k_results: list of lists of ranked results for each query [[doc_id1, doc_id2,...], ...]
+                          the i-th result corresponds to (i+1)-th query_id. There may be less than top_k
+                          results returned for a query, but never more.
+    :param relevance: dict, query_id:[(relevant_doc_id1, score1), (relevant_doc_id2, score2), ...]
+    :param top_k: (max) number of results retrieved for each query, use this value to find normalization
+                  factor for each query
+    :return: NDCG score
     '''
     ndcg_score = 0.0
     for j, scores in relevance.items():

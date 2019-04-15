@@ -11,7 +11,7 @@ import numpy as np
 import networkx as nx
 from node2vec import Node2Vec
 from nltk.corpus import stopwords
-from gensim.summarization.summarizer import summarize 
+
 
 csv.field_size_limit(sys.maxsize)
 # nltk.download('stopwords')
@@ -109,7 +109,6 @@ def naive_sum(doc: Article, query: str, sentence_cnt: int) -> str:
     # calculating score for each sentence
     score_results = {}
     for sentence in sentences:
-        # consider only short sentences
         for term in preprocess(sentence):
             if sentence in score_results:
                 score_results[sentence] += tf[term] * q_tf[term]
@@ -328,7 +327,7 @@ def launch():
         engine.load_index(paths=save_paths)
         print("* Index was loaded successfully! *")
     
-    q = "Macbook pro"
+    q = "Google job"
     docs = engine.answer_query(q, 2)
     print(docs[0])
     compare_doc_sum(docs[0], q, 5)
