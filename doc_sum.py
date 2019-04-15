@@ -39,7 +39,13 @@ def read_data(path: str = "articles50000.csv") -> List[Article]:
 
 
 def clean_text(text: str) -> str:
-    ''''''
+    '''Removes some trash from text and multiple spaces
+    
+    Args:
+        text: input text
+    Returns:
+        clean text
+    '''
     clean_text = re.sub(r'[’”“]', ' ', text)
     clean_text = re.sub(r'\s+', ' ', clean_text)
     return clean_text
@@ -119,7 +125,18 @@ def naive_sum(doc: Article, query: str, sentence_cnt: int) -> str:
 
 
 def build_graph(text: str, sentences: List[str], eps: float = 0.1) -> nx.Graph:
-    '''TODO: add docstring'''
+    '''Build networkx Graph from given document
+    
+    Nodes of the graph are sentence ids and edges are simliraty
+    between any two sentences
+
+    Args:
+        text: text of document
+        sentences: sentences of document
+        eps: hyperparameter (responsible for sparcity of the graph)
+    Returns:
+        resulting networkx Graph
+    '''
     n = len(sentences)
     tf = Counter(preprocess(text))
 
@@ -200,6 +217,14 @@ def graph_sum(doc: Article, query: str, sentence_cnt: int) -> str:
 
 
 def get_similarity(sent1: str, sent2: str) -> np.float32:
+    '''Calculates similarity between two sentences
+    
+    Args:
+        sent1: first sentence
+        sent2: second sentence
+    Returns:
+        single float number corresponding to similarity
+    '''
     terms1 = preprocess(sent1)
     terms2 = preprocess(sent2)
 
@@ -218,6 +243,13 @@ def get_similarity(sent1: str, sent2: str) -> np.float32:
 
 
 def get_similarity_matrix(sentences: List[str]) -> np.ndarray:
+    '''Returns similarity matrix for given sentences
+    
+    Args:
+        sentences: sentences for which matrix should be built
+    Returns:
+        matrix of similarity
+    '''
     n = len(sentences)
     sim_matrix = np.zeros((n, n), dtype='float32')
 
@@ -239,7 +271,6 @@ def cosine_pagerank(doc: Article, query: str, sentence_cnt: int) -> str:
         doc: text of the document
         query: input query
         sentence_cnt: max amount of terms for output
-    
     Returns:
         resulting summary (title + summary text)
     '''

@@ -102,6 +102,13 @@ def NDCG(top_k_results, relevance, top_k):
 
 
 def docs2vecs(docs: Dict[int, Article]):
+    '''Converts documents to vector representation
+    
+    Args:
+        docs: documents to be converted
+    Returns:
+        resulting vectors
+    '''
     vectors = {}
     for doc_id, doc in docs.items():
         terms = preprocess(str(doc))
@@ -122,11 +129,24 @@ def docs2vecs(docs: Dict[int, Article]):
 
 def rocchio(query: str, relevance: List[Tuple[int, int]],
             top_docs: Dict[int, Article], alph=1.0, beta=0.75, gamma=0.15):
+    '''Implementation of Rocchio algorithm
+
+    Args:
+        query: input query
+        relevance: list of relevant docs for query
+        top_docs: top k docs for query
+        alph: weight of original query
+        beta: weight of relevant docs
+        gamma: weight of irrelevant docs
+    Return:
+        modified query as Dict (term: score)
+    '''
     top_docs_vectors = docs2vecs(top_docs)
     query_vector = Counter(preprocess(query))
     new_query = dict((k, v * alph) for k, v in query_vector.items())
     
-    center = dict((k, 0) for k in query_vector.keys())
+    # center for relevant docs
+    center = dict((k, 0) for k in query_vector.keys()) 
     relevant_docs = set()
     for doc_id, _ in relevance:
         if doc_id in top_docs_vectors:
@@ -137,6 +157,7 @@ def rocchio(query: str, relevance: List[Tuple[int, int]],
                 else:
                     center[term] = top_docs_vectors[doc_id][term]
 
+    # center for irrelevant docs
     neg_center = dict((k, 0) for k in query_vector.keys())
     for doc_id in top_docs_vectors:
         if doc_id not in relevant_docs:
@@ -146,9 +167,11 @@ def rocchio(query: str, relevance: List[Tuple[int, int]],
                 else:
                     neg_center[term] = top_docs_vectors[doc_id][term]
     
+    # if no relevant docs, return same query
     if len(relevant_docs) == 0:
         return new_query
 
+    # recalculate weights for terms and add new
     for term in center:
         if term in new_query:
             new_query[term] += beta * 1 / len(relevant_docs) * center[term]
@@ -165,7 +188,15 @@ def rocchio(query: str, relevance: List[Tuple[int, int]],
     return new_query
 
 
-def get_k_relevant_docs(docs, k):
+def get_k_relevant_docs(docs: Dict[int, Article], k: int):
+    ''' Returns relevance for top k relevant docs
+
+    Args:
+        docs: considered docs
+        k: amount of docs to return
+    Returns:
+        list of k tuples: (doc_id, 1)
+    '''
     relevance = []
     relevant_cnt = min(int(len(docs) / 2), k)
     for doc_id in docs:
@@ -180,26 +211,50 @@ def get_k_relevant_docs(docs, k):
 
 def pseudo_relevance_feedback(query: str, top_docs: Dict[int, Article],
                               relevant_n=5, alph=1.0, beta=0.75, gamma=0):
+    '''Implementation of pseudo relevance feedback
+    
+    Based on implementation of roccio algorithm
+
+    Args:
+        query: input query
+        top_docs: top k docs for query
+        relevant_n: number of first docs to consider relevant
+        alph: weight of original query
+        beta: weight of relevant docs
+        gamma: weight of irrelevant docs
+    Return:
+        modified query as Dict (term: score)
+    '''
     relevance = get_k_relevant_docs(top_docs, relevant_n)
     return rocchio(query, relevance, top_docs, alph, beta, gamma)
 
 
-def get_definition_words(word):
-    syns = wordnet.synsets(word)
-    print(syns)
-    return set(preprocess(syns[0].definition())) if len(syns) > 0 else set()
-
-
 def calculate_relation(term1_syns, term2_syns):
+    '''Calculates relation between definitions of two terms'''
     if len(term1_syns) > 0 and len(term2_syns) > 0:
         return wordnet.wup_similarity(term1_syns[0], term2_syns[0])
     else:
         return 0
 
 
-def global_method1(query, relevant_docs, add_terms=5):
+def global_wordnet_exp(query: str, relevant_docs, add_terms: int=5):
+    '''Implementation of global query expansion method using wordnet
+
+    Considers selection of top `add_terms` terms from pseudo
+    relevant documents via matching combination of 
+    definitions from wordnet and other metrics (such as idf)
+    P.S: CET - Candidate Expansion Term
+
+    Args:
+        query: initial query
+        relevant_docs: pseudo relevant docs for query
+        add_terms: number of terms to add to query
+    Returns:
+        new query
+    '''
     all_terms = set()
     term2doc = {}
+    # find all terms and save occurrences of terms in docs
     for doc_id, doc in relevant_docs.items():
         terms = set(preprocess(str(doc)))
         all_terms = all_terms | terms
@@ -209,16 +264,17 @@ def global_method1(query, relevant_docs, add_terms=5):
             else:
                 term2doc[term] = [doc_id]
     
+    # calculate idf for each CET
     idf = {}
     for term in all_terms:
         N = len(engine.documents)
         N_t = len(engine.index[term]) - 1 if term in engine.index else 0
         idf[term] = max(1e-4, np.log10((N - N_t + 0.5) / (N_t + 0.5)))
     
-
     relations = {}
     terms = preprocess(query)
-    # CET - Candidate Expansion Term
+   
+    # calculate relation score between each CET and query term 
     for cet_term in all_terms:
         for term in terms:
             _cet = wordnet.synsets(cet_term)
@@ -227,6 +283,7 @@ def global_method1(query, relevant_docs, add_terms=5):
                 relations[cet_term] = {}
             relations[cet_term][term] = calculate_relation(_cet, _term)
     
+    # Get scores for each doc for query
     doc_scores = engine.okapi_scoring(Counter(engine.preprocess(query)),
                                       engine.doc_lengths, 
                                       engine.index)
@@ -234,6 +291,7 @@ def global_method1(query, relevant_docs, add_terms=5):
     max_score = max(doc_scores.values())
     doc_scores = dict((k, v / max_score) for k, v in doc_scores.items())
     
+    # compute score for each CET
     cet2score = {}
     for cet_term in all_terms:
         for term in terms:
@@ -246,8 +304,10 @@ def global_method1(query, relevant_docs, add_terms=5):
                 cet2score[cet_term] = rel * idf_ * sum(similarity)
             cet2score[cet_term] /= (1 + cet2score[cet_term])
     
+    # sort CET scores
     cet_scores = sorted(cet2score.items(), key=lambda item: item[1])
     
+    # select CET's with biggest scores to add into new query
     new_query = [query]
     for word, _ in cet_scores[-add_terms:]:
         new_query.append(' ' + word)
@@ -255,7 +315,13 @@ def global_method1(query, relevant_docs, add_terms=5):
     return ''.join(new_query)
 
 
-def k_relevant(docs, k):
+def k_relevant(docs: Dict[int, Article], k: int):
+    '''Returns first k documents
+    
+    Args:
+        docs: input documents
+        k: number of documents to return
+    '''
     relevant = {}
     i = 0
     for doc_id, doc in docs.items():
@@ -308,18 +374,17 @@ def launch():
             prf_q_results = engine.answer_query(prf_query, top_k, get_ids=True, is_raw=False)
             top_k_prf.append(list(prf_q_results.keys()))
 
-            glob_query = global_method1(queries[q_id], k_relevant(q_results, 5), add_terms=2)
+            glob_query = global_wordnet_exp(queries[q_id], k_relevant(q_results, 5), add_terms=2)
             glob_results = engine.answer_query(glob_query, top_k, get_ids=True)
             top_k_glob.append(list(glob_results.keys()))
 
             processed += 1
-        # if q_id > 10:
-        #     break
 
     print('\nRaw query NDCG:', NDCG(top_k_results, relevance, top_k))
     print('Relevance feedback (Rocchio) NDCG:', NDCG(top_k_rf, relevance, top_k))
     print('Pseudo relevance feedback (Rocchio) NDCG:', NDCG(top_k_prf, relevance, top_k))
     print('Global NDCG:', NDCG(top_k_glob, relevance, top_k))
+
 
 if __name__ == '__main__':
     launch()
