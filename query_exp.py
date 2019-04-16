@@ -347,7 +347,14 @@ def k_relevant(docs: Dict[int, Article], k: int):
     return relevant
 
 
-def train_test_split(docs):
+def train_test_split(docs: Dict[int, Article]):
+    '''Splits input docs on train and test parts 50:50
+    
+    Args:
+        docs: docs to be splitted
+    Returns:
+        ids for train and test parts
+    '''
     document_ids = list(docs.keys())
     random.shuffle(document_ids)
 
