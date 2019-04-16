@@ -246,7 +246,7 @@ def calculate_relation(term1_syns, term2_syns):
         return 0
 
 
-def global_wordnet_exp(query: str, relevant_docs, add_terms: int=5):
+def global_wordnet_exp(query: str, relevant_docs, add_terms: int=3):
     '''Implementation of global query expansion method using wordnet
 
     Considers selection of top `add_terms` terms from pseudo
@@ -314,12 +314,18 @@ def global_wordnet_exp(query: str, relevant_docs, add_terms: int=5):
             cet2score[cet_term] /= (1 + cet2score[cet_term])
     
     # sort CET scores
-    cet_scores = sorted(cet2score.items(), key=lambda item: item[1])
+    cet_scores = sorted(cet2score.items(), key=lambda item: item[1], reverse=True)
     
     # select CET's with biggest scores to add into new query
     new_query = [query]
-    for word, _ in cet_scores[-add_terms:]:
-        new_query.append(' ' + word)
+    cnt = 0
+    for word, _ in cet_scores:
+        if cnt == add_terms:
+            break
+        # not include terms already in query
+        if word not in terms:
+            new_query.append(' ' + word)
+            cnt += 1
     
     return ''.join(new_query)
 
@@ -392,7 +398,7 @@ def launch():
                                                  included_docs=test_ids)
             top_k_results.append(list(q_results_test.keys()))
 
-            rf_query = rocchio(queries[q_id], relevance[q_id], q_results, beta=0.5, gamma=0.0)
+            rf_query = rocchio(queries[q_id], relevance[q_id], q_results, beta=0.75, gamma=0.15)
             rf_q_results = engine.answer_query(rf_query, top_k, get_ids=True, is_raw=False,
                                                included_docs=test_ids)
             top_k_rf.append(list(rf_q_results.keys()))
