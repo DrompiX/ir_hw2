@@ -327,10 +327,10 @@ def launch():
         engine.load_index(paths=save_paths)
         print("* Index was loaded successfully! *")
     
-    q = "Google job"
-    docs = engine.answer_query(q, 2)
+    query = "Google job"
+    docs = engine.answer_query(query, 2)
     print(docs[0])
-    compare_doc_sum(docs[0], q, 5)
+    compare_doc_sum(docs[0], query, 5)
 
 
 if __name__ == '__main__':

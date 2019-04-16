@@ -1,6 +1,7 @@
 import json
 import re
 import sys
+import random
 import numpy as np
 import search_engine as engine
 from search_engine import Article
@@ -171,13 +172,21 @@ def rocchio(query: str, relevance: List[Tuple[int, int]],
     if len(relevant_docs) == 0:
         return new_query
 
+    term_candidates = {}
     # recalculate weights for terms and add new
     for term in center:
-        if term in new_query:
-            new_query[term] += beta * 1 / len(relevant_docs) * center[term]
+        if term in term_candidates:
+        # if term in new_query:
+            # new_query[term] += beta * 1 / len(relevant_docs) * center[term]
+            term_candidates[term] += beta * 1 / len(relevant_docs) * center[term]
         else:
-            new_query[term] = beta * 1 / len(relevant_docs) * center[term]
+            # new_query[term] = beta * 1 / len(relevant_docs) * center[term]
+            term_candidates[term] = beta * 1 / len(relevant_docs) * center[term]
     
+    term_candidates = sorted(term_candidates.items(), key=lambda item: item[1], reverse=True)
+    for term_score in term_candidates[:3]:
+        new_query[term_score[0]] = term_score[1]
+
     non_rel_cnt = len(top_docs_vectors) - len(relevant_docs)
     if gamma > 0 and non_rel_cnt > 0:
         for term in neg_center:
@@ -330,7 +339,18 @@ def k_relevant(docs: Dict[int, Article], k: int):
             i += 1
     
     return relevant
-        
+
+
+def train_test_split(docs):
+    document_ids = list(docs.keys())
+    random.shuffle(document_ids)
+
+    half = int(len(document_ids) / 2)
+    train_docs = document_ids[:half]
+    test_docs = document_ids[half:]
+
+    return train_docs, test_docs
+
 
 def launch():
     data_path = 'data.nosync/cranfield/'
@@ -352,30 +372,39 @@ def launch():
         engine.load_index(paths=save_paths)
         print("* Index was loaded successfully! *")
 
+    train_ids, test_ids = train_test_split(documents)
+
     top_k_results = []
     top_k_rf = []
     top_k_prf = []
     top_k_glob = []
-    processed = 0
+    processed = 1
     top_k = 10
     for q_id in queries:
         if q_id != 0:
             sys.stdout.write(f"\rQueries processed - {processed}/{len(queries) - 1}")
             sys.stdout.flush()
 
-            q_results = engine.answer_query(queries[q_id], top_k, get_ids=True)
-            top_k_results.append(list(q_results.keys()))
+            q_results = engine.answer_query(queries[q_id], top_k, get_ids=True,
+                                            included_docs=train_ids)
+            
+            q_results_test = engine.answer_query(queries[q_id], top_k, get_ids=True,
+                                                 included_docs=test_ids)
+            top_k_results.append(list(q_results_test.keys()))
 
-            rf_query = rocchio(queries[q_id], relevance[q_id], q_results, beta=0.75, gamma=0.15)
-            rf_q_results = engine.answer_query(rf_query, top_k, get_ids=True, is_raw=False)
+            rf_query = rocchio(queries[q_id], relevance[q_id], q_results, beta=0.5, gamma=0.0)
+            rf_q_results = engine.answer_query(rf_query, top_k, get_ids=True, is_raw=False,
+                                               included_docs=test_ids)
             top_k_rf.append(list(rf_q_results.keys()))
 
-            prf_query = pseudo_relevance_feedback(queries[q_id], q_results, 5, beta=0.75, gamma=0.0)
-            prf_q_results = engine.answer_query(prf_query, top_k, get_ids=True, is_raw=False)
+            prf_query = pseudo_relevance_feedback(queries[q_id], q_results, 5, beta=0.75, gamma=0.15)
+            prf_q_results = engine.answer_query(prf_query, top_k, get_ids=True, is_raw=False,
+                                                included_docs=test_ids)
             top_k_prf.append(list(prf_q_results.keys()))
 
             glob_query = global_wordnet_exp(queries[q_id], k_relevant(q_results, 5), add_terms=2)
-            glob_results = engine.answer_query(glob_query, top_k, get_ids=True)
+            glob_results = engine.answer_query(glob_query, top_k, get_ids=True,
+                                               included_docs=test_ids)
             top_k_glob.append(list(glob_results.keys()))
 
             processed += 1

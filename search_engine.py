@@ -107,7 +107,7 @@ def okapi_scoring(query: Dict[str, int], doc_lengths: Dict[int, int],
     return dict(scores)
 
 
-def answer_query(in_query, top_k, get_ids=False, is_raw=True):
+def answer_query(in_query, top_k, get_ids=False, is_raw=True, included_docs=None):
     if is_raw:
         query = preprocess(in_query)
         query = Counter(query)
@@ -116,7 +116,10 @@ def answer_query(in_query, top_k, get_ids=False, is_raw=True):
     
     scores = okapi_scoring(query, doc_lengths, index)
     h = []
+    _filter = included_docs is not None
     for doc_id in scores.keys():
+        if _filter and (doc_id not in included_docs):
+            continue
         neg_score = -scores[doc_id]
         heapq.heappush(h, (neg_score, doc_id))
 
