@@ -10,4 +10,12 @@ How to run the code?
 Now you can run the code by simply typing `python3 doc_sum.py` for document summarization task and `python3 query_exp.py` for query expansion one.
 To provide any other query for document summarization, please consider changin code in `doc_sum.py` in line `query = "your query here"` in `launch()` function.
 
+If you will have a problem with nltk (probably not loaded datasets), please use <br>
+
+```
+	import nltk
+	nltk.download('wordnet')     # required for query expansion
+	nltk.download('stopwords')   # required for both parts
+```
+
 If you have any questions, please contact me via Telegram: `@dimaz_t`

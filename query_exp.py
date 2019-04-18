@@ -102,6 +102,53 @@ def NDCG(top_k_results, relevance, top_k):
     return ndcg_score
 
 
+def calculate_precision_recall(top_k, relevance):
+    precision, recall = [], []
+    relevant_cnt, total_cnt = 0, 0
+    relevant = set()
+
+    for x in relevance:
+        relevant.add(x[0])
+
+    for doc_id in top_k:
+        total_cnt += 1
+        relevant_cnt += 1 if doc_id in relevant else 0
+        precision.append(relevant_cnt / total_cnt)
+        recall.append(0 if len(relevant) == 0 else relevant_cnt / len(relevant))
+
+    return precision, recall
+
+
+def mean_avg_precision(top_k_results, relevance):
+    """
+    Calculates MAP score for search results, treating relevance judgments as binary - either relevant or not.
+    Refer to chapter 8.4 for explanation
+    :param top_k_results: list of lists of ranked results for each query [[doc_id1, doc_id2,...], ...]
+                          the i-th result corresponds to (i+1)-th query_id. There may be less than top_k
+                          results returned for a query, but never more.
+    :param relevance: dict, query_id:[(relevant_doc_id1, score1), (relevant_doc_id2, score2), ...]
+    :return: calculated MAP score
+    """
+    map_score = 0.0
+    for j, scores in relevance.items():
+        precision, _ = calculate_precision_recall(top_k_results[j - 1], scores)
+        relevant = set()
+        for x in scores:
+            relevant.add(x[0])
+        
+        precision_score, cnt = 0.0, 0
+        for i in range(len(top_k_results[j - 1])):
+            if top_k_results[j - 1][i] in relevant:
+                precision_score += precision[i]
+                cnt += 1
+        
+        map_score += precision_score if cnt == 0 else precision_score / cnt
+    
+    map_score /= len(relevance)
+    
+    return map_score
+
+
 def docs2vecs(docs: Dict[int, Article]):
     '''Converts documents to vector representation
     
@@ -426,6 +473,11 @@ def launch():
     print('Relevance feedback (Rocchio) NDCG:', NDCG(top_k_rf, relevance, top_k))
     print('Pseudo relevance feedback (Rocchio) NDCG:', NDCG(top_k_prf, relevance, top_k))
     print('Global NDCG:', NDCG(top_k_glob, relevance, top_k))
+
+    print('\nRaw query MAP:', mean_avg_precision(top_k_results, relevance))
+    print('Relevance feedback (Rocchio) MAP:', mean_avg_precision(top_k_rf, relevance))
+    print('Pseudo relevance feedback (Rocchio) MAP:', mean_avg_precision(top_k_prf, relevance))
+    print('Global MAP:', mean_avg_precision(top_k_glob, relevance))
 
 
 if __name__ == '__main__':
