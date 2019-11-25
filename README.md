@@ -1,4 +1,4 @@
-# Information Retrieval homework 2
+# Document summarization & query expansion - Information Retrieval homework 2, Innopolis University
 
 How to run the code?
 
