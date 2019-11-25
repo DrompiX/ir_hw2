@@ -17,5 +17,3 @@ If you will have a problem with nltk (probably not loaded datasets), please use 
 	nltk.download('wordnet')     # required for query expansion
 	nltk.download('stopwords')   # required for both parts
 ```
-
-If you have any questions, please contact me via Telegram: `@dimaz_t`
